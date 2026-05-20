@@ -5,6 +5,11 @@ import pandas as pd
 from datetime import datetime
 import matplotlib.pyplot as plt
 
+try:
+    import catppuccin
+except ImportError:
+    catppuccin = None
+
 st.set_page_config(layout="wide")
 
 # API base URL (containerized use should set API_URL to e.g. http://backend:3000)
@@ -91,8 +96,64 @@ def main():
                     for v in s
                 ]
 
+            totalYearIncome = display_df["Income"].sum()
+            totalYearExpenses = display_df["Total Expenses"].sum()
+            totalYearBalance = display_df["Balance"].sum()
+
+            st.subheader(f"Yearly summary — {selected_year}")
+            st.write(f"Total Income: {totalYearIncome:,.2f}")
+            st.write(f"Total Expenses: {totalYearExpenses:,.2f}")
+            st.write(f"Total Balance: {totalYearBalance:,.2f}")
             styler = styler.apply(_balance_style, subset=["Balance"])
             st.subheader(f"Monthly overview — {selected_year}")
+
+            # Charts always render in a two-column layout
+            df_plot = display_df.copy().fillna(0)
+            month_order = months
+            df_plot = df_plot.set_index("Month").reindex(month_order).fillna(0)
+
+            # light, clean style matching Streamlit aesthetics
+            style_name = catppuccin.PALETTE.mocha.identifier if catppuccin else "default"
+            theme = catppuccin.PALETTE.mocha if catppuccin else None
+            palette = [
+                theme.colors.blue.hex,
+                theme.colors.green.hex,
+                theme.colors.peach.hex,
+                theme.colors.mauve.hex,
+                theme.colors.pink.hex,
+            ] if theme else ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
+            line_colors = [theme.colors.blue.hex, theme.colors.peach.hex] if theme else ["#1f77b4", "#ff7f0e"]
+
+            chart_col1, chart_col2 = st.columns(2)
+
+            # Stacked bar: expenses by category per month
+            expense_categories = ["Housing", "Food", "Transport", "Entertainment", "Other"]
+            with chart_col1:
+                with plt.style.context(style_name):
+                    fig1, ax1 = plt.subplots(figsize=(5, 2.8))
+                    df_plot[expense_categories].plot(kind="bar", stacked=True, ax=ax1, color=palette)
+                    ax1.set_title(f"Monthly Expenses — {selected_year}", fontsize=11)
+                    ax1.set_xlabel("")
+                    ax1.set_ylabel("Amount")
+                    ax1.legend(title="Category", loc="upper right", frameon=False, fontsize=8, title_fontsize=8)
+                    plt.tight_layout()
+                    st.pyplot(fig1)
+                    plt.close(fig1)
+
+            # Line chart: Income vs Total Expenses
+            with chart_col2:
+                with plt.style.context(style_name):
+                    fig2, ax2 = plt.subplots(figsize=(5, 2.8))
+                    df_plot[["Income", "Total Expenses"]].plot(ax=ax2, marker="o", color=line_colors)
+                    ax2.set_title(f"Income vs Expenses — {selected_year}", fontsize=11)
+                    ax2.set_xlabel("")
+                    ax2.set_ylabel("Amount")
+                    ax2.grid(axis="y", linestyle="--", alpha=0.6)
+                    ax2.legend(frameon=False, fontsize=8)
+                    plt.tight_layout()
+                    st.pyplot(fig2)
+                    plt.close(fig2)
+
             st.write(styler)
         else:
             st.warning("No financial data found. Please enter your financial data.")
