@@ -4,3 +4,7 @@ requests
 pandas
 matplotlib
 catppuccin
+pytest
+pyright
+python-dotenv
+mistralai
