@@ -16,9 +16,57 @@ st.set_page_config(layout="wide")
 API_BASE = os.environ.get("API_URL", "http://backend:3000")
 api_url = f"{API_BASE}/api"
 
+MONTHS = ["January", "February", "March", "April", "May", "June",
+          "July", "August", "September", "October", "November", "December"]
+EXPENSE_COLUMNS = ["housingExpenses", "foodExpenses", "transportationExpenses", "entertainmentExpenses", "otherExpenses"]
+
+
+def build_monthly_overview(entries, selected_year):
+    df_entries = pd.DataFrame(entries)
+
+    if df_entries.empty:
+        df_year = pd.DataFrame()
+    else:
+        df_entries["year"] = pd.to_numeric(
+            df_entries.get("year", pd.Series()),
+            errors="coerce",
+        ).fillna(datetime.today().year).astype(int)
+        df_year = df_entries[df_entries["year"] == int(selected_year)].copy()
+
+    if not df_year.empty:
+        df_year = df_year.drop_duplicates(subset=["month"], keep="last")
+
+    df_months = pd.DataFrame({"Month": MONTHS})
+    if df_year.empty:
+        df_merged = df_months
+    else:
+        df_year = df_year.rename(columns={"month": "Month"})
+        df_merged = df_months.merge(df_year, on="Month", how="left")
+
+    for col in ["income"] + EXPENSE_COLUMNS:
+        if col in df_merged.columns:
+            df_merged[col] = pd.to_numeric(df_merged[col], errors="coerce")
+        else:
+            df_merged[col] = pd.NA
+
+    df_merged["Total Expenses"] = df_merged[EXPENSE_COLUMNS].sum(axis=1)
+    df_merged["Balance"] = df_merged["income"] - df_merged["Total Expenses"]
+
+    display_cols = ["Month", "income"] + EXPENSE_COLUMNS + ["Total Expenses", "Balance"]
+    return df_merged[display_cols].rename(columns={
+        "income": "Income",
+        "housingExpenses": "Housing",
+        "foodExpenses": "Food",
+        "transportationExpenses": "Transport",
+        "entertainmentExpenses": "Entertainment",
+        "otherExpenses": "Other",
+    })
+
 def main():
     st.title("Smart Budget")
     st.write("Welcome to Smart Budget! Get a grip over your financial situation.")
+
+    selected_year = None
 
     if "status_message" not in st.session_state:
         st.session_state.status_message = None
@@ -33,10 +81,6 @@ def main():
             payload = response.json()
             entries = payload.get("data", []) or []
 
-            # prepare month order and names
-            months = ["January", "February", "March", "April", "May", "June",
-                      "July", "August", "September", "October", "November", "December"]
-
             # build DataFrame once and vectorize computations
             df_entries = pd.DataFrame(entries)
             if df_entries.empty:
@@ -50,41 +94,13 @@ def main():
             with col_year:
                 selected_year = st.selectbox("Year", years, index=len(years) - 1)
 
-            # filter to selected year and keep last entry per month
-            df_year = df_entries[df_entries["year"] == int(selected_year)].copy() if not df_entries.empty else pd.DataFrame()
-            if not df_year.empty:
-                df_year = df_year.drop_duplicates(subset=["month"], keep="last")
+            if selected_year is None:
+                st.error("Please select a year before continuing.")
+                return
 
-            # create canonical months frame and merge
-            df_months = pd.DataFrame({"Month": months})
-            if df_year.empty:
-                df_merged = df_months
-            else:
-                df_year = df_year.rename(columns={"month": "Month"})
-                df_merged = df_months.merge(df_year, on="Month", how="left")
+            selected_year_int = int(selected_year)
 
-            # numeric columns
-            expense_cols = ["housingExpenses", "foodExpenses", "transportationExpenses", "entertainmentExpenses", "otherExpenses"]
-            for col in ["income"] + expense_cols:
-                if col in df_merged.columns:
-                    df_merged[col] = pd.to_numeric(df_merged[col], errors="coerce")
-                else:
-                    df_merged[col] = pd.NA
-
-            # compute totals
-            df_merged["Total Expenses"] = df_merged[expense_cols].sum(axis=1)
-            df_merged["Balance"] = df_merged["income"] - df_merged["Total Expenses"]
-
-            # build display DataFrame
-            display_cols = ["Month", "income"] + expense_cols + ["Total Expenses", "Balance"]
-            display_df = df_merged[display_cols].rename(columns={
-                "income": "Income",
-                "housingExpenses": "Housing",
-                "foodExpenses": "Food",
-                "transportationExpenses": "Transport",
-                "entertainmentExpenses": "Entertainment",
-                "otherExpenses": "Other",
-            })
+            display_df = build_monthly_overview(entries, selected_year_int)
 
             # style and render
             fmt_cols = [c for c in display_df.columns if c != "Month"]
@@ -100,17 +116,16 @@ def main():
             totalYearExpenses = display_df["Total Expenses"].sum()
             totalYearBalance = display_df["Balance"].sum()
 
-            st.subheader(f"Yearly summary — {selected_year}")
+            st.subheader(f"Yearly summary — {selected_year_int}")
             st.write(f"Total Income: {totalYearIncome:,.2f}")
             st.write(f"Total Expenses: {totalYearExpenses:,.2f}")
             st.write(f"Total Balance: {totalYearBalance:,.2f}")
             styler = styler.apply(_balance_style, subset=["Balance"])
-            st.subheader(f"Monthly overview — {selected_year}")
+            st.subheader(f"Monthly overview — {selected_year_int}")
 
             # Charts always render in a two-column layout
             df_plot = display_df.copy().fillna(0)
-            month_order = months
-            df_plot = df_plot.set_index("Month").reindex(month_order).fillna(0)
+            df_plot = df_plot.set_index("Month").reindex(MONTHS).fillna(0)
 
             # light, clean style matching Streamlit aesthetics
             style_name = catppuccin.PALETTE.mocha.identifier if catppuccin else "default"
@@ -132,7 +147,7 @@ def main():
                 with plt.style.context(style_name):
                     fig1, ax1 = plt.subplots(figsize=(5, 2.8))
                     df_plot[expense_categories].plot(kind="bar", stacked=True, ax=ax1, color=palette)
-                    ax1.set_title(f"Monthly Expenses — {selected_year}", fontsize=11)
+                    ax1.set_title(f"Monthly Expenses — {selected_year_int}", fontsize=11)
                     ax1.set_xlabel("")
                     ax1.set_ylabel("Amount")
                     ax1.legend(title="Category", loc="upper right", frameon=False, fontsize=8, title_fontsize=8)
@@ -145,7 +160,7 @@ def main():
                 with plt.style.context(style_name):
                     fig2, ax2 = plt.subplots(figsize=(5, 2.8))
                     df_plot[["Income", "Total Expenses"]].plot(ax=ax2, marker="o", color=line_colors)
-                    ax2.set_title(f"Income vs Expenses — {selected_year}", fontsize=11)
+                    ax2.set_title(f"Income vs Expenses — {selected_year_int}", fontsize=11)
                     ax2.set_xlabel("")
                     ax2.set_ylabel("Amount")
                     ax2.grid(axis="y", linestyle="--", alpha=0.6)
@@ -188,7 +203,7 @@ def main():
         if st.button("Submit"):
             data = {
                 "month": month,
-                "year": year,
+                "year": int(year),
                 "income": income,
                 "housingExpenses": housingExpenses,
                 "foodExpenses": foodExpenses,
@@ -209,6 +224,45 @@ def main():
                 st.rerun()
             else:
                 st.error("Error submitting financial data. Please try again.")
-    
 
-main()
+    st.divider()
+    st.subheader("Ask about your finances")
+    st.write("Ask a question about your budget and get an answer based on the saved data.")
+
+    chat_question = st.text_area(
+        "Your question",
+        placeholder="For example: Where am I overspending most this year?",
+        key="finance_chat_question",
+    )
+
+    if st.button("Get financial advice"):
+        if not chat_question.strip():
+            st.warning("Type a question first.")
+        else:
+            try:
+                chat_response = requests.post(
+                    f"{api_url}/chat",
+                    json={"question": chat_question, "year": selected_year_int},
+                )
+            except requests.exceptions.RequestException as e:
+                st.error(f"Error asking for financial advice: {e}")
+                return
+
+            if chat_response.status_code == 200:
+                chat_payload = chat_response.json()
+                st.success(chat_payload.get("message", "Chat response generated successfully"))
+                st.write(chat_payload.get("response", ""))
+            else:
+                error_message = "Could not get financial advice."
+                try:
+                    error_message = chat_response.json().get("message", error_message)
+                except ValueError:
+                    response_text = chat_response.text.strip()
+                    if response_text:
+                        error_message = response_text
+
+                st.error(error_message)
+
+
+if __name__ == "__main__":
+    main()

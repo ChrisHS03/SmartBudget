@@ -1,0 +1,109 @@
+import os
+from pathlib import Path
+
+import pandas as pd
+from dotenv import load_dotenv
+from mistralai.client.sdk import Mistral
+
+
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
+
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest")
+
+def get_client() -> Mistral:
+	return Mistral(api_key=os.environ["MISTRAL_API_KEY"])
+
+
+def build_financial_context(data_frame: pd.DataFrame) -> str:
+	if data_frame.empty:
+		return "No financial data is available yet."
+
+	normalized = data_frame.copy()
+	for column in [
+		"year",
+		"income",
+		"housingExpenses",
+		"foodExpenses",
+		"transportationExpenses",
+		"entertainmentExpenses",
+		"otherExpenses",
+	]:
+		if column not in normalized.columns:
+			normalized[column] = pd.NA
+
+	normalized["year"] = pd.to_numeric(normalized["year"], errors="coerce")
+	normalized["income"] = pd.to_numeric(normalized["income"], errors="coerce")
+	normalized["housingExpenses"] = pd.to_numeric(normalized["housingExpenses"], errors="coerce")
+	normalized["foodExpenses"] = pd.to_numeric(normalized["foodExpenses"], errors="coerce")
+	normalized["transportationExpenses"] = pd.to_numeric(normalized["transportationExpenses"], errors="coerce")
+	normalized["entertainmentExpenses"] = pd.to_numeric(normalized["entertainmentExpenses"], errors="coerce")
+	normalized["otherExpenses"] = pd.to_numeric(normalized["otherExpenses"], errors="coerce")
+
+	normalized["totalExpenses"] = normalized[
+		[
+			"housingExpenses",
+			"foodExpenses",
+			"transportationExpenses",
+			"entertainmentExpenses",
+			"otherExpenses",
+		]
+	].sum(axis=1)
+	normalized["balance"] = normalized["income"] - normalized["totalExpenses"]
+
+	yearly_income = normalized["income"].sum(skipna=True)
+	yearly_expenses = normalized["totalExpenses"].sum(skipna=True)
+	yearly_balance = normalized["balance"].sum(skipna=True)
+
+	top_rows = normalized[["month", "year", "income", "totalExpenses", "balance"]].head(6)
+	top_rows_text = top_rows.to_string(index=False)
+
+	return (
+		f"Yearly income: {yearly_income:,.2f}\n"
+		f"Yearly expenses: {yearly_expenses:,.2f}\n"
+		f"Yearly balance: {yearly_balance:,.2f}\n\n"
+		f"Sample budget rows:\n{top_rows_text}"
+	)
+
+
+def ask_financial_question(question: str, data_frame: pd.DataFrame) -> str:
+	context = build_financial_context(data_frame)
+	response = get_client().chat.complete(
+		model=MISTRAL_MODEL,
+		messages=[
+			{
+				"role": "system",
+				"content": (
+					"You are a financial assistant inside a budgeting app. "
+					"Use the provided budget context to answer clearly and practically. "
+					"Do not claim certainty beyond the data. Keep advice concise and helpful."
+				),
+			},
+			{
+				"role": "user",
+				"content": f"Budget context:\n{context}\n\nUser question: {question}",
+			},
+		],
+	)
+
+	choice = response.choices[0]
+	message = choice.message
+	if message is None or message.content is None:
+		return ""
+
+	return str(message.content)
+
+
+if __name__ == "__main__":
+	sample_frame = pd.DataFrame([
+		{
+			"month": "January",
+			"year": 2026,
+			"income": 2000,
+			"housingExpenses": 800,
+			"foodExpenses": 300,
+			"transportationExpenses": 100,
+			"entertainmentExpenses": 75,
+			"otherExpenses": 50,
+		}
+	])
+	print(ask_financial_question("What should I focus on to improve my finances?", sample_frame))

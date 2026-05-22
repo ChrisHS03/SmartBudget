@@ -3,8 +3,10 @@ import os
 
 import pandas as pd
 
+from llmService import ask_financial_question
+
 app = Flask(__name__)
-app.port = 3000
+DEFAULT_PORT = 3000
 
 CSV_FILE = 'database.csv'
 FIELDNAMES = [
@@ -63,5 +65,31 @@ def get_data():
     data = load_data_frame().to_dict('records')
     return jsonify({"message": "Data fetched successfully", "data": data}), 200
 
+
+@app.route('/api/chat', methods=['POST'])
+def chat_about_finances():
+    payload = request.get_json() or {}
+    question = str(payload.get("question", "")).strip()
+
+    if not question:
+        return jsonify({"message": "Question is required"}), 400
+
+    data_frame = load_data_frame()
+
+    selected_year = payload.get("year")
+    if selected_year not in (None, "", 0):
+        try:
+            year_value = int(selected_year)
+            data_frame = data_frame[pd.to_numeric(data_frame["year"], errors="coerce") == year_value]
+        except (TypeError, ValueError, KeyError):
+            pass
+
+    try:
+        response_text = ask_financial_question(question, data_frame)
+    except RuntimeError as exc:
+        return jsonify({"message": str(exc)}), 500
+
+    return jsonify({"message": "Chat response generated successfully", "response": response_text}), 200
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True, port=app.port)
+    app.run(host='0.0.0.0', debug=True, port=DEFAULT_PORT)
