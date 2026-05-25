@@ -2,6 +2,7 @@ flask
 streamlit
 requests
 pandas
+numpy
 matplotlib
 catppuccin
 pytest

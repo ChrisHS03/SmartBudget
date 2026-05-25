@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 from mistralai.client.errors.sdkerror import SDKError
@@ -10,60 +11,73 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "ministral-3b-2512")
 
+NUMERIC_COLUMNS = [
+    "year",
+    "income",
+    "housingExpenses",
+    "foodExpenses",
+    "transportationExpenses",
+    "entertainmentExpenses",
+    "otherExpenses",
+]
+
+EXPENSE_COLUMNS = [
+    "housingExpenses",
+    "foodExpenses",
+    "transportationExpenses",
+    "entertainmentExpenses",
+    "otherExpenses",
+]
+
 
 def get_client() -> Mistral:
     return Mistral(api_key=os.environ["MISTRAL_API_KEY"])
+
+
+def normalize_financial_data(data_frame: pd.DataFrame) -> pd.DataFrame:
+    normalized = data_frame.copy()
+
+    for column in NUMERIC_COLUMNS:
+        if column not in normalized.columns:
+            normalized[column] = pd.NA
+
+    for column in NUMERIC_COLUMNS:
+        normalized[column] = pd.to_numeric(normalized[column], errors="coerce")
+
+    return normalized
+
+
+def build_budget_metrics(data_frame: pd.DataFrame) -> tuple[pd.DataFrame, float, float, float, float, float]:
+    normalized = normalize_financial_data(data_frame)
+
+    expense_values = normalized[EXPENSE_COLUMNS].to_numpy(dtype=float)
+    total_expenses = np.nansum(expense_values, axis=1)
+    balance = normalized["income"].to_numpy(dtype=float) - total_expenses
+
+    normalized["totalExpenses"] = total_expenses
+    normalized["balance"] = balance
+
+    yearly_income = float(np.nansum(normalized["income"].to_numpy(dtype=float)))
+    yearly_expenses = float(np.nansum(total_expenses))
+    yearly_balance = float(np.nansum(balance))
+    average_monthly_expenses = float(np.nanmean(total_expenses)) if len(total_expenses) else 0.0
+    savings_rate = (yearly_balance / yearly_income * 100.0) if yearly_income else 0.0
+
+    return (
+        normalized,
+        yearly_income,
+        yearly_expenses,
+        yearly_balance,
+        average_monthly_expenses,
+        savings_rate,
+    )
 
 
 def build_financial_context(data_frame: pd.DataFrame) -> str:
     if data_frame.empty:
         return "No financial data is available yet."
 
-    normalized = data_frame.copy()
-    for column in [
-        "year",
-        "income",
-        "housingExpenses",
-        "foodExpenses",
-        "transportationExpenses",
-        "entertainmentExpenses",
-        "otherExpenses",
-    ]:
-        if column not in normalized.columns:
-            normalized[column] = pd.NA
-
-    normalized["year"] = pd.to_numeric(normalized["year"], errors="coerce")
-    normalized["income"] = pd.to_numeric(normalized["income"], errors="coerce")
-    normalized["housingExpenses"] = pd.to_numeric(
-        normalized["housingExpenses"], errors="coerce"
-    )
-    normalized["foodExpenses"] = pd.to_numeric(
-        normalized["foodExpenses"], errors="coerce"
-    )
-    normalized["transportationExpenses"] = pd.to_numeric(
-        normalized["transportationExpenses"], errors="coerce"
-    )
-    normalized["entertainmentExpenses"] = pd.to_numeric(
-        normalized["entertainmentExpenses"], errors="coerce"
-    )
-    normalized["otherExpenses"] = pd.to_numeric(
-        normalized["otherExpenses"], errors="coerce"
-    )
-
-    normalized["totalExpenses"] = normalized[
-        [
-            "housingExpenses",
-            "foodExpenses",
-            "transportationExpenses",
-            "entertainmentExpenses",
-            "otherExpenses",
-        ]
-    ].sum(axis=1)
-    normalized["balance"] = normalized["income"] - normalized["totalExpenses"]
-
-    yearly_income = normalized["income"].sum(skipna=True)
-    yearly_expenses = normalized["totalExpenses"].sum(skipna=True)
-    yearly_balance = normalized["balance"].sum(skipna=True)
+    normalized, yearly_income, yearly_expenses, yearly_balance, average_monthly_expenses, savings_rate = build_budget_metrics(data_frame)
 
     cols = ["month", "year", "income", "totalExpenses", "balance"]
     top_rows = normalized[cols].head(6)
@@ -72,7 +86,9 @@ def build_financial_context(data_frame: pd.DataFrame) -> str:
     return (
         f"Yearly income: {yearly_income:,.2f}\n"
         f"Yearly expenses: {yearly_expenses:,.2f}\n"
-        f"Yearly balance: {yearly_balance:,.2f}\n\n"
+        f"Yearly balance: {yearly_balance:,.2f}\n"
+        f"Average monthly expenses: {average_monthly_expenses:,.2f}\n"
+        f"Savings rate: {savings_rate:.1f}%\n\n"
         f"Sample budget rows:\n{top_rows_text}"
     )
 
