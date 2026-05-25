@@ -1,8 +1,6 @@
 from importlib import util
 from pathlib import Path
 
-import pandas as pd
-
 ROOT = Path(__file__).resolve().parents[1]
 FRONT_PATH = ROOT / "frontend" / "front.py"
 

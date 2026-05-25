@@ -1,0 +1,17 @@
+[project]
+name = "smartbudget"
+version = "0.1.0"
+description = "Personal budget helper"
+requires-python = ">=3.11"
+
+[tool.uv]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.6.0",
+    "pyright>=1.1.409",
+    "pytest>=7.0",
+    "ruff>=0.15.12",
+]
+
+# Add uv tasks in [tool.uv.tasks] if you want to define repeatable commands.

@@ -1,9 +1,10 @@
 import os
-import streamlit as st
-import requests
-import pandas as pd
 from datetime import datetime
+
 import matplotlib.pyplot as plt
+import pandas as pd
+import requests
+import streamlit as st
 
 try:
     import catppuccin
@@ -192,7 +193,7 @@ def main():
             month = st.selectbox("Month", ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"], index=datetime.today().month - 1)
         with col2:
             year = st.number_input("Year", value=datetime.today().year, min_value=2000, step=1)
-        
+
         income = st.text_input("Income", value="", placeholder="0.0", key="income")
         housingExpenses = st.text_input("Housing Expenses", value="", placeholder="0.0", key="housing")
         foodExpenses = st.text_input("Food Expenses", value="", placeholder="0.0", key="food")
