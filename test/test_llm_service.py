@@ -30,6 +30,8 @@ def test_build_financial_context_summarizes_finances():
 
     assert "Yearly income:" in context
     assert "Yearly expenses:" in context
+    assert "Average monthly expenses:" in context
+    assert "Savings rate:" in context
     assert "January" in context
     assert "February" in context
 
