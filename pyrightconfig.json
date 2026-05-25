@@ -1,15 +1,10 @@
 {
-  "include": [
-    "backend",
-    "test"
-  ],
-  "exclude": [
-    "venv",
-    ".pytest_cache",
-    "__pycache__",
-    "**/node_modules",
-    "**/.*"
-  ],
+  "pythonVersion": "3.12",
   "typeCheckingMode": "basic",
-  "useLibraryCodeForTypes": true
+  "venvPath": ".",
+  "venv": "venv",
+  "useLibraryCodeForTypes": true,
+  "reportMissingTypeStubs": false,
+  "include": ["backend", "test"],
+  "exclude": ["venv", ".venv", "build", "dist", "frontend"]
 }

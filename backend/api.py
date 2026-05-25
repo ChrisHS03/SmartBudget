@@ -1,8 +1,7 @@
-from flask import Flask, request, jsonify
 import os
 
 import pandas as pd
-
+from flask import Flask, jsonify, request
 from llmService import ask_financial_question
 
 app = Flask(__name__)
